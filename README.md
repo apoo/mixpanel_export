@@ -1,4 +1,4 @@
-mixpanel_export
+Mixpanel Export
 ===============
 
-Mixpanel library that lets you export your data
+Mixpanel Python library that lets you export your data.
