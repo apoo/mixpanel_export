@@ -26,6 +26,7 @@ try:
 except ImportError:
     import simplejson as json
 
+
 class Mixpanel(object):
 
     ENDPOINT = 'http://mixpanel.com/api'
@@ -42,12 +43,15 @@ class Mixpanel(object):
             params - Extra parameters associated with method
         """
         params['api_key'] = self.api_key
-        params['expire'] = int(time.time()) + 600   # Grant this request 10 minutes.
+        # Grant this request 10 minutes.
+        params['expire'] = int(time.time()) + 600
         params['format'] = format
-        if 'sig' in params: del params['sig']
+        if 'sig' in params:
+            del params['sig']
         params['sig'] = self.hash_args(params)
 
-        request_url = '/'.join([self.ENDPOINT, str(self.VERSION)] + methods) + '/?' + self.unicode_urlencode(params)
+        request_url = '/'.join([self.ENDPOINT, str(self.VERSION)] + methods) + \
+            '/?' + self.unicode_urlencode(params)
 
         request = urllib.urlopen(request_url)
         data = request.read()
@@ -66,7 +70,8 @@ class Mixpanel(object):
                 params[i] = (param[0], json.dumps(param[1]),)
 
         return urllib.urlencode(
-            [(k, isinstance(v, unicode) and v.encode('utf-8') or v) for k, v in params]
+            [(k, isinstance(v, unicode) and v.encode('utf-8') or v)
+             for k, v in params]
         )
 
     def hash_args(self, args, secret=None):
@@ -75,7 +80,8 @@ class Mixpanel(object):
             then taking the MD5 hex digest.
         """
         for a in args:
-            if isinstance(args[a], list): args[a] = json.dumps(args[a])
+            if isinstance(args[a], list):
+                args[a] = json.dumps(args[a])
 
         args_joined = ''
         for a in sorted(args.keys()):
@@ -99,15 +105,68 @@ class Mixpanel(object):
             hash.update(self.api_secret)
         return hash.hexdigest()
 
+
+class ExportMixpanel(Mixpanel):
+
+    ENDPOINT = 'http://data.mixpanel.com/api'
+    VERSION = '2.0'
+
+    def request(self, methods, params, format='json'):
+        """
+            methods - List of methods to be joined, e.g. ['events', 'properties', 'values']
+                      will give us http://mixpanel.com/api/2.0/events/properties/values/
+            params - Extra parameters associated with method
+        """
+        params['api_key'] = self.api_key
+        # Grant this request 10 minutes.
+        params['expire'] = int(time.time()) + 600
+        params['format'] = format
+        if 'sig' in params:
+            del params['sig']
+        params['sig'] = self.hash_args(params)
+
+        request_url = '/'.join([self.ENDPOINT, str(self.VERSION)] + methods) + \
+            '/?' + self.unicode_urlencode(params)
+
+        request = urllib.urlopen(request_url)
+        data = request.read()
+
+        return self.order_by_distinc_id(data)
+
+    def parse(self, data):
+        data = data.split("\n")
+        data = data[:len(data)-1]
+        results = []
+        for row in data:
+            result = json.loads(row)
+            results.append(result)
+        return results
+
+    def order_by_distinc_id(self, data):
+        data = self.parse(data)
+        people = {}
+        for event in data:
+            distinct_id = event['properties']['distinct_id']
+            properties = event['properties']
+            params = {"distinct_id": distinct_id}
+            if '$city' in properties:
+                params.update({"$city": properties['$city']})
+            if '$region' in properties:
+                params.update({"$region": properties['$region']})
+            if 'mp_country_code' in properties:
+                params.update({"$country_code": properties['mp_country_code']})
+            people[distinct_id] = params
+        return people
+
 if __name__ == '__main__':
     api = Mixpanel(
-        api_key = 'YOUR KEY',
-        api_secret = 'YOUR SECRET'
+        api_key='YOUR KEY',
+        api_secret='YOUR SECRET'
     )
     data = api.request(['events'], {
-        'event' : ['pages',],
-        'unit' : 'hour',
-        'interval' : 24,
+        'event': ['pages', ],
+        'unit': 'hour',
+        'interval': 24,
         'type': 'general'
     })
     print data
